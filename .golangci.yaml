@@ -1,0 +1,20 @@
+run:
+  skip-dirs-use-default: true
+
+linters:
+  presets:
+    - bugs
+    - complexity
+    - format
+    - performance
+    - style
+    - unused
+  fast: true
+
+issues:
+  exclude-rules:
+    - path: mainflags.go
+      linters:
+        - gochecknoglobals
+
+linters-settings: {}
