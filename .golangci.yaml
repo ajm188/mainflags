@@ -9,6 +9,8 @@ linters:
     - performance
     - style
     - unused
+  disable:
+    - gomnd
   fast: true
 
 issues:

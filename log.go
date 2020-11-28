@@ -23,7 +23,7 @@ func debugf(msg string, args ...interface{}) {
 	log.Printf("D "+msg, args...)
 }
 
-func infof(msg string, args ...interface{}) { // nolint:deadcode
+func infof(msg string, args ...interface{}) {
 	if *logLevel < LogInfo {
 		return
 	}
