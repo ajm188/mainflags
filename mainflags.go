@@ -122,9 +122,16 @@ func main() {
 		problems = append(problems, doPackage(pkg)...)
 	}
 
+	if len(problems) == 0 {
+		infof("no problems found")
+		return
+	}
+
 	for _, problem := range problems {
 		errorf(formatProblem(problem))
 	}
+
+	os.Exit(2)
 }
 
 // formatProblem returns a string representation of a problem suitable for

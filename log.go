@@ -1,6 +1,10 @@
 package main
 
-import "log"
+import (
+	"fmt"
+	"log"
+	"os"
+)
 
 type LogLevel int
 
@@ -46,7 +50,10 @@ func errorf(msg string, args ...interface{}) {
 		log.Printf("E "+msg, args...)
 	}
 
-	log.Printf(msg, args...)
+	// If we're only logging Error, we assume we're running in the context of a
+	// linter, so we should strip any prefixes off the message (including the
+	// date/time added by default in package log).
+	fmt.Fprintf(os.Stderr, msg, args...)
 }
 
 func fatalf(msg string, args ...interface{}) {
