@@ -85,7 +85,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 		}
 
 		ast.Inspect(file, func(n ast.Node) bool {
-			problem, recurse := passInspect(pass, imp, n)
+			problem, recurse := inspect(pass, imp, n)
 			problems = problems || problem
 			return recurse
 		})
@@ -103,7 +103,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	return nil, nil
 }
 
-func passInspect(pass *analysis.Pass, imp *pkgImport, n ast.Node) (problem bool, recurse bool) {
+func inspect(pass *analysis.Pass, imp *pkgImport, n ast.Node) (problem bool, recurse bool) {
 	expr, ok := n.(ast.Expr)
 	if !ok {
 		return false, true
