@@ -21,6 +21,38 @@ func TestRun(t *testing.T) {
 			returncode: 2,
 			problems:   1,
 		},
+		{
+			name:       "flagalias",
+			returncode: 2,
+			problems:   3,
+		},
+		{
+			// the correct usage
+			name:       "flagset",
+			returncode: 0,
+			problems:   0,
+		},
+		{
+			name:       "flagvars",
+			returncode: 2,
+			problems:   3,
+		},
+		{
+			// in main, so it's okay
+			name:       "main",
+			returncode: 0,
+			problems:   0,
+		},
+		{
+			name:       "noflags",
+			returncode: 0,
+			problems:   0,
+		},
+		{
+			name:       "scopedflags",
+			returncode: 2,
+			problems:   1,
+		},
 	}
 
 	var buf bytes.Buffer
