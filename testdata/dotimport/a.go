@@ -1,0 +1,5 @@
+package dotimport
+
+import (
+	. "flag"
+)

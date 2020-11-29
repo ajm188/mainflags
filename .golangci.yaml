@@ -18,5 +18,9 @@ issues:
     - path: mainflags.go
       linters:
         - gochecknoglobals
+    - path: _test\.go
+      linters:
+        - scopelint
+        - testpackage
 
 linters-settings: {}
