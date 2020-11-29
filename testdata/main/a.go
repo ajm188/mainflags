@@ -1,6 +1,9 @@
 package main
 
-import "flag"
+import (
+	"flag"
+	"fmt"
+)
 
 var (
 	one   = flag.Int("one", 1, "one")
@@ -12,4 +15,6 @@ func main() {
 	four := flag.Int("four", 4, "four")
 
 	flag.Parse()
+
+	fmt.Println(*four)
 }

@@ -1,35 +1,17 @@
-package main
+package mainflags
 
 import (
 	"flag"
 	"fmt"
 	"go/ast"
-	"go/token"
-	"io"
-	"os"
-	"path/filepath"
-	"sort"
-	"strings"
 	"sync"
 
-	"golang.org/x/tools/go/packages"
-)
-
-const (
-	packageMode = (packages.NeedName |
-		packages.NeedFiles |
-		packages.NeedCompiledGoFiles |
-		packages.NeedImports |
-		packages.NeedSyntax |
-		packages.NeedTypes)
-	logLevelHelp = `verbosity of logging. Should be LogError <= x < LogWarning for use in golangci-lint.
-Set to a negative number to disable logging entirely`
+	"golang.org/x/tools/go/analysis"
 )
 
 var (
-	logLevel             = (*LogLevel)(flag.Int("verbosity", 0, logLevelHelp))
-	cwd                  = mustString(os.Getwd())
-	allowedFlagFunctions = map[string]bool{
+	logLevel             LogLevel = LogError
+	allowedFlagFunctions          = map[string]bool{
 		"Arg":           true,
 		"Args":          true,
 		"NArg":          true,
@@ -46,221 +28,136 @@ var (
 	}
 )
 
-func mustString(s string, err error) string {
-	if err != nil {
-		fatalf("cannot get current directory, err = %s", err)
-	}
+const (
+	logLevelHelp = `verbosity of logging. Should be LogError <= x < LogWarning for use in golangci-lint.
+Set to a negative number to disable logging entirely`
+)
 
-	return s
+func flagset() *flag.FlagSet {
+	fs := flag.NewFlagSet("mainflags", flag.ContinueOnError)
+
+	fs.IntVar((*int)(&logLevel), "verbosity", 0, logLevelHelp)
+
+	return fs
 }
 
-// ImportOrder sorts a list of packages by standard goimports order. Standard
-// library packages come first alphabetically, then third-party packages.
-//
-// We currently don't attempt to detect what gomodule mainflags is analyzing,
-// so module packages and third-party packages may be interspersed.
-type ImportOrder []*packages.Package
-
-func (a ImportOrder) Len() int      { return len(a) }
-func (a ImportOrder) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a ImportOrder) Less(i, j int) bool {
-	l, r := a[i].PkgPath, a[j].PkgPath
-
-	lparts := strings.Split(l, "/")
-	rparts := strings.Split(r, "/")
-
-	if !strings.Contains(lparts[0], ".") {
-		if !strings.Contains(rparts[0], ".") {
-			return l < r
-		}
-
-		return true
+func Analyzer() *analysis.Analyzer {
+	return &analysis.Analyzer{
+		Name:  "mainflags",
+		Doc:   "check that global flags are only defined in main packages",
+		Run:   run,
+		Flags: *flagset(),
 	}
-
-	if !strings.Contains(rparts[0], ".") {
-		return false
-	}
-
-	return l < r
 }
 
-func main() {
-	flag.Parse()
-
-	cfg := &packages.Config{
-		Mode: packageMode,
-	}
-
-	var pkgNames []string
-
-	switch flag.NArg() {
-	case 0:
-		pkgNames = append(pkgNames, ".")
-	default:
-		pkgNames = append(pkgNames, flag.Args()...)
-	}
-
-	debugf("begin program load")
-
-	pkgs, err := packages.Load(cfg, pkgNames...)
-	if err != nil {
-		fatalf("cannot load program; err = %s", err)
-	}
-
-	debugf("end program load")
-
-	os.Exit(run(os.Stderr, pkgs))
-}
-
-func run(w io.Writer, pkgs []*packages.Package) int {
-	sort.Sort(ImportOrder(pkgs))
-	// nolint:prealloc
-	var problems []*Problem
-
-	for _, pkg := range pkgs {
-		if pkg.Name == "main" {
-			debugf("%s is package main, skipping", pkg.PkgPath)
-
-			continue
-		}
-
-		problems = append(problems, doPackage(pkg)...)
-	}
-
-	if len(problems) == 0 {
-		infof("no problems found")
-		return 0
-	}
-
-	for _, problem := range problems {
-		ferrorf(w, formatProblem(problem))
-	}
-
-	return 2
-}
-
-// formatProblem returns a string representation of a problem suitable for
-// consumption by golangci-lint.
-func formatProblem(problem *Problem) string {
-	buf := strings.Builder{}
-
-	pos := problem.pkg.Fset.Position(problem.pos)
-
-	f, err := filepath.Rel(cwd, pos.Filename)
-	if err == nil {
-		pos.Filename = f
-	}
-
-	buf.WriteString(pos.String())
-	buf.WriteString(": ")
-	buf.WriteString(problem.message)
-
-	return buf.String()
-}
-
-// Problem represents a linter problem. It is formatted for consumption by
-// golangci-lint in formatProblem.
-type Problem struct {
-	pkg     *packages.Package
-	file    *ast.File
-	pos     token.Pos
-	message string
-}
-
-// doPackage processes one Go package, returning a list of Problems with flag
-// usage in that package.
-func doPackage(pkg *packages.Package) []*Problem {
-	var ( // nolint:prealloc
-		importLog sync.Once
-		problems  []*Problem
+func run(pass *analysis.Pass) (interface{}, error) {
+	var (
+		flagsetSkipLog sync.Once
+		importLog      sync.Once
+		problems       = false
 	)
 
-	for _, file := range pkg.Syntax {
-		debugf("processing %s\n", file.Name.Name)
-		importsFlag, alias, p := processImports(pkg, file)
-		problems = append(problems, p...)
+	for _, file := range pass.Files {
+		debugf("processing %s", file.Name.String())
 
-		if !importsFlag {
+		imp, ok := checkImports(file.Imports)
+		if !ok {
 			continue
 		}
 
 		importLog.Do(func() {
 			// Only log this the first time it happens.
-			debugf("package %s imports flag", pkg.PkgPath)
+			debugf("package %s imports flag", pass.Pkg.Path())
 		})
 
+		if imp.alias == "." {
+			pass.ReportRangef(imp.spec, "package flag should not be dot-imported")
+			problems = true // nolint:wsl
+			continue        // nolint:wsl
+		}
+
+		if pass.Pkg.Name() == "main" {
+			flagsetSkipLog.Do(func() {
+				debugf("%s is package main, skipping flagset check", pass.Pkg.Path())
+			})
+
+			continue
+		}
+
 		ast.Inspect(file, func(n ast.Node) bool {
-			expr, ok := n.(ast.Expr)
-			if !ok {
-				return true
-			}
-
-			call, ok := expr.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-
-			msg, ok := checkCall(call, alias)
-			if !ok {
-				problems = append(problems, &Problem{
-					pkg:     pkg,
-					file:    file, // nolint:scopelint
-					pos:     call.Pos(),
-					message: msg,
-				})
-			}
-
-			// We may miss calls that look like:
-			//		flag.StringVar(flag.String("hello", "val", "usage"), "goodbye", "val", "usage"))
-			// In this case we miss the inner one, but honestly I am okay with
-			// that.
-			return false
+			problem, recurse := passInspect(pass, imp, n)
+			problems = problems || problem
+			return recurse
 		})
 	}
 
 	importLog.Do(func() {
 		// This will only invoke if no file in the package imports "flag"
-		debugf("package %s does not import flag", pkg.PkgPath)
+		debugf("package %s does not import flag", pass.Pkg.Path())
 	})
 
-	return problems
+	if !problems {
+		infof("no problems in package %s", pass.Pkg.Path())
+	}
+
+	return nil, nil
 }
 
-// processImports inspects a file within a given Go package. It checks if the
-// file imports package "flag", and if aliased, what the alias is. It reports
-// a problem if package flag is dot-imported, because we are unable to
-// accurately do any further analysis on flag usage in the file. Technically, we
-// are unable to process *any* file in the package at that point, but we still
-// try.
-func processImports(pkg *packages.Package, file *ast.File) (importsFlag bool, alias string, problems []*Problem) {
-	for _, imp := range file.Imports {
+func passInspect(pass *analysis.Pass, imp *pkgImport, n ast.Node) (problem bool, recurse bool) {
+	expr, ok := n.(ast.Expr)
+	if !ok {
+		return false, true
+	}
+
+	call, ok := expr.(*ast.CallExpr)
+	if !ok {
+		return false, true
+	}
+
+	msg, ok := checkCall(call, imp.alias)
+	if !ok {
+		pass.ReportRangef(call, msg)
+		problem = true // nolint:wsl
+	}
+
+	// We may miss calls that look like:
+	//		flag.StringVar(flag.String("hello", "val", "usage"), "goodbye", "val", "usage"))
+	//
+	// In this case we miss the inner one, but honestly I am okay with
+	// that.
+	return problem, false
+}
+
+type pkgImport struct {
+	alias string
+	spec  *ast.ImportSpec
+}
+
+func checkImports(imports []*ast.ImportSpec) (*pkgImport, bool) {
+	for _, imp := range imports {
+		if imp.Path == nil {
+			continue
+		}
+
 		if imp.Path.Value != `"flag"` {
 			continue
 		}
 
-		alias = "flag"
+		alias := "flag"
 		if imp.Name != nil {
 			alias = imp.Name.Name
 		}
 
-		if alias == "." {
-			problems = append(problems, &Problem{
-				pkg:     pkg,
-				file:    file,
-				pos:     imp.Pos(),
-				message: "package flag should not be dot-imported",
-			})
-
-			return false, "", problems
-		}
-
-		return true, alias, problems
+		return &pkgImport{
+			alias: alias,
+			spec:  imp,
+		}, true
 	}
 
-	return false, "", nil
+	return nil, false
 }
 
-// checkCall returns true if it is a disallowed function call on the flag
+// checkCall returns false if it is a disallowed function call on the flag
 // package.
 func checkCall(call *ast.CallExpr, flagpkg string) (string, bool) {
 	selector, ok := call.Fun.(*ast.SelectorExpr)

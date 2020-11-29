@@ -1,5 +1,7 @@
 package dotimport
 
 import (
-	. "flag"
+	. "flag" // want `package flag should not be dot-imported`
 )
+
+var x = String("x", "y", "z")

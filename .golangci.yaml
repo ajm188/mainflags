@@ -20,8 +20,6 @@ issues:
         - gochecknoglobals
     - path: _test\.go
       linters:
-        - funlen
-        - scopelint
         - testpackage
 
 linters-settings: {}
