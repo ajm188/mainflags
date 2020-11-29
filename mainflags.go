@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -108,6 +109,10 @@ func main() {
 
 	debugf("end program load")
 
+	os.Exit(run(os.Stderr, pkgs))
+}
+
+func run(w io.Writer, pkgs []*packages.Package) int {
 	sort.Sort(ImportOrder(pkgs))
 	// nolint:prealloc
 	var problems []*Problem
@@ -124,14 +129,14 @@ func main() {
 
 	if len(problems) == 0 {
 		infof("no problems found")
-		return
+		return 0
 	}
 
 	for _, problem := range problems {
-		errorf(formatProblem(problem))
+		ferrorf(w, formatProblem(problem))
 	}
 
-	os.Exit(2)
+	return 2
 }
 
 // formatProblem returns a string representation of a problem suitable for

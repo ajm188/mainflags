@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
+	"strings"
 )
 
 type LogLevel int
@@ -39,7 +41,29 @@ func warningf(msg string, args ...interface{}) { // nolint:deadcode
 	log.Printf("W "+msg, args...)
 }
 
-func errorf(msg string, args ...interface{}) {
+func ferrorf(w io.Writer, msg string, args ...interface{}) {
+	if *logLevel < LogError {
+		return
+	}
+
+	if *logLevel < LogError {
+		return
+	}
+
+	// Only prefix with the level if we're logging at levels other than Error
+	// or Fatal.
+	if *logLevel >= LogWarning {
+		fmt.Fprintf(w, "E "+msg, args...)
+	}
+
+	if !strings.HasSuffix(msg, "\n") {
+		msg += "\n"
+	}
+
+	fmt.Fprintf(w, msg, args...)
+}
+
+func errorf(msg string, args ...interface{}) { // nolint:deadcode
 	if *logLevel < LogError {
 		return
 	}
@@ -48,6 +72,10 @@ func errorf(msg string, args ...interface{}) {
 	// or Fatal.
 	if *logLevel >= LogWarning {
 		log.Printf("E "+msg, args...)
+	}
+
+	if !strings.HasSuffix(msg, "\n") {
+		msg += "\n"
 	}
 
 	// If we're only logging Error, we assume we're running in the context of a
