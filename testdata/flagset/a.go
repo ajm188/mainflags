@@ -2,15 +2,15 @@ package flagset
 
 import "flag"
 
-type Config struct {
+type config struct {
 	A string
 	B string
 	C string
 }
 
-var cfg = &Config{}
+var cfg = &config{}
 
-func AddFlags(fs *flag.FlagSet) {
+func addFlags(fs *flag.FlagSet) {
 	fs.StringVar(&cfg.A, "a", "a", "a")
 	fs.StringVar(&cfg.B, "b", "b", "b")
 	fs.StringVar(&cfg.C, "c", "c", "c")

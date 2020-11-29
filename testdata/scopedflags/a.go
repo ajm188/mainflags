@@ -1,4 +1,4 @@
-package flagalias
+package scopedflags
 
 import "flag"
 
