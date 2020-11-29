@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"sort"
 	"strings"
 	"testing"
 
@@ -75,6 +76,65 @@ func TestRun(t *testing.T) {
 			problems += strings.Count(out, "package flag should not be dot-imported")
 
 			assert.Equal(t, tt.problems, problems, "run() produced the wrong number of problems")
+		})
+	}
+}
+
+func TestImportOrder(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []string
+		out  []string
+	}{
+		{
+			name: "stdlib",
+			in: []string{
+				"math/rand",
+				"io",
+				"crypto/rand",
+			},
+			out: []string{
+				"crypto/rand",
+				"io",
+				"math/rand",
+			},
+		},
+		{
+			name: "mixed",
+			in: []string{
+				"strings",
+				"github.com/stretchr/testify",
+				"gopkg.in/yaml.v3",
+				"flag",
+				"google.golang.org/grpc",
+			},
+			out: []string{
+				"flag",
+				"strings",
+				"github.com/stretchr/testify",
+				"google.golang.org/grpc",
+				"gopkg.in/yaml.v3",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var pkgs []*packages.Package
+			for _, path := range tt.in {
+				pkgs = append(pkgs, &packages.Package{
+					PkgPath: path,
+				})
+			}
+
+			sort.Sort(ImportOrder(pkgs))
+
+			var paths []string
+			for _, pkg := range pkgs {
+				paths = append(paths, pkg.PkgPath)
+			}
+
+			assert.Equal(t, tt.out, paths)
 		})
 	}
 }
